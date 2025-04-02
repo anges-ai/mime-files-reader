@@ -1,0 +1,10 @@
+# requirements.txt
+google.genai
+python-dotenv
+httpx
+mcp
+click
+anyio
+# for testing
+pytest
+mcp-client
