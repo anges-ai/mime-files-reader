@@ -1,6 +1,6 @@
 # MimeFilesReader
 
-Reads and processes various MIME type files (images, PDFs, audio, etc.) using Google's Generative AI models (like Gemini Pro/Flash) capable of multi-modal understanding. Provides both a command-line interface (CLI) and a Model Context Protocol (MCP) server interface.
+Reads and processes various MIME type files (images, PDFs, audio, etc.) using Google's Gemini models capable of multi-modal understanding. Provides both a command-line interface (CLI) and a Model Context Protocol (MCP) server interface.
 
 ## Features
 
@@ -10,11 +10,39 @@ Reads and processes various MIME type files (images, PDFs, audio, etc.) using Go
 *   Offers an MCP server interface for integration with AI Agent frameworks (LangChain, LlamaIndex, AutoGen, custom agents).
 *   Handles file uploads to the Google AI backend and optional automatic cleanup.
 
+## Example use cases
+
+### Use case 1
+With Gemini's OCR capability, agents can use the tool to fetch info from MIME contents such as PDF, images and audio etc.
+
+![demo1](docs/contents/demo_1.gif)
+
+```
+# Try with
+mime-reader \
+  -m "gemini-2.5-pro-exp-03-25" \
+  -q "Get the full text out of the PDF paper"\ 
+  -f tests/test_data/1916_The_Foundation_of_the_General_Theory_of_Relativity_Einstein_part1.pdf
+```
+
+### Use case 2
+Reading images can be helpful to let agents work with headless browsers, for debugging front end code or for web browsing.
+
+![demo2](docs/contents/demo_2.gif)
+
+```
+# Try with
+mime-reader \
+  -m "gemini-2.5-pro-exp-03-25" \
+  -q "The picture is a screenshot of headless browser result. Describe in details of what is on it. Highlight any broken part or incorrect content" \
+  -f tests/test_data/test_screenshot.png
+```
+
 ## Installation
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/anges-ai/mime-files-reader.git # Replace with your repo URL
+    git clone https://github.com/anges-ai/mime-files-reader.git
     cd mime_reader
     ```
 2.  **Create and activate a virtual environment (Recommended):**
@@ -33,7 +61,7 @@ Reads and processes various MIME type files (images, PDFs, audio, etc.) using Go
     ```dotenv
     # .env
     GEMINI_API_KEY="YOUR_GOOGLE_AI_API_KEY"
-    # Optional: Specify a model, defaults to gemini-1.5-flash-latest
+    # Optional: Specify a model, defaults to gemini-2.0-flash
     # GEMINI_MODEL_NAME="gemini-2.0-flash"
     ```
 
