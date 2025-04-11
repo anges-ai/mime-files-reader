@@ -150,7 +150,7 @@ def test_read_return_string(mock_genai_client, reader_instance, tmp_path):
     question = "Describe this image."; files = [test_file_rel_path]
 
     # --- REMOVED patch for types.Part ---
-    result = reader_instance.read(question=question, files=files, output=None, auto_cleanup=True)
+    result = reader_instance.read(question=question, inputs=files, output=None, auto_cleanup=True)
 
     assert result == "Mock response part 1. Mock response part 2."
     mock_files.upload.assert_called_once_with(file=str(test_file_abs_path.resolve()))
@@ -190,10 +190,10 @@ def test_read_write_to_file(mock_genai_client, reader_instance, tmp_path):
     output_file_abs = tmp_path / output_file_rel
     question = "Describe."; files = [test_file_rel_path]
 
-    result = reader_instance.read(question=question, files=files, output=output_file_rel, auto_cleanup=False)
+    result = reader_instance.read(question=question, inputs=files, output=output_file_rel, auto_cleanup=False)
 
     expected_output_path_abs = output_file_abs.resolve()
-    expected_message = f"Mime files successfully processed. Results written to: {expected_output_path_abs}"
+    expected_message = f"Inputs successfully processed. Results written to: {expected_output_path_abs}"
     assert result == expected_message
     assert output_file_abs.exists()
     assert output_file_abs.read_text(encoding="utf-8") == "Mock response part 1. Mock response part 2."
@@ -203,12 +203,12 @@ def test_read_write_to_file(mock_genai_client, reader_instance, tmp_path):
 
 def test_read_input_file_not_found(reader_instance):
     with pytest.raises(FileNotFoundError, match="Input file not found"):
-        reader_instance.read(question="Test", files=["non_existent_file.txt"])
+        reader_instance.read(question="Test", inputs=["non_existent_file.txt"])
 
 def test_read_input_path_is_directory(reader_instance, tmp_path):
     dir_path_rel = "a_directory"; dir_path_abs = tmp_path / dir_path_rel; dir_path_abs.mkdir()
     with pytest.raises(FileNotFoundError, match="Input path exists but is not a file"):
-         reader_instance.read(question="Test", files=[dir_path_rel])
+         reader_instance.read(question="Test", inputs=[dir_path_rel])
 
 def test_read_upload_fails(mock_genai_client, reader_instance, tmp_path):
     mock_files = mock_genai_client["mock_files_service"]
@@ -216,7 +216,7 @@ def test_read_upload_fails(mock_genai_client, reader_instance, tmp_path):
     mock_files.upload.return_value = None
     test_file_rel = "image_upload_fail.png"; (tmp_path / test_file_rel).touch()
     with pytest.raises(ValueError, match="No files were successfully prepared"):
-        reader_instance.read(question="Test", files=[test_file_rel])
+        reader_instance.read(question="Test", inputs=[test_file_rel])
     mock_files.upload.assert_called_once()
     mock_models.generate_content_stream.assert_not_called()
     mock_files.delete.assert_not_called()
@@ -236,7 +236,7 @@ def test_read_upload_returns_no_uri(mock_genai_client, reader_instance, tmp_path
 
     # Expect ValueError because no parts will be created
     with pytest.raises(ValueError, match="No files were successfully prepared"):
-        reader_instance.read(question="Test", files=[test_file_rel], auto_cleanup=True)
+        reader_instance.read(question="Test", inputs=[test_file_rel], auto_cleanup=True)
 
     # Verify API calls
     mock_files.upload.assert_called_once()
@@ -269,7 +269,7 @@ def test_integration_read_images_return_string():
     ]
     print(f"\nRunning integration test: Reading {files} using model {TEST_MODEL}")
     start_time = time.time(); result = None
-    try: result = reader.read(question=question, files=files, output=None, auto_cleanup=True)
+    try: result = reader.read(question=question, inputs=files, output=None, auto_cleanup=True)
     except Exception as e: pytest.fail(f"Integration test failed with exception: {e}")
     finally:
         duration = time.time() - start_time
@@ -299,7 +299,7 @@ def test_integration_read_image1_write_file(tmp_path):
     print(f"\nRunning integration test: Reading {files}, output to {output_file_abs} using model {TEST_MODEL}")
     start_time = time.time(); result_msg = None; content = ""
     try:
-        result_msg = reader.read(question=question, files=files, output=str(output_file_abs), auto_cleanup=True)
+        result_msg = reader.read(question=question, inputs=files, output=str(output_file_abs), auto_cleanup=True)
         if output_file_abs.exists(): content = output_file_abs.read_text(encoding="utf-8")
     except Exception as e: pytest.fail(f"Integration test failed with exception: {e}")
     finally:
@@ -309,7 +309,7 @@ def test_integration_read_image1_write_file(tmp_path):
         if content: print(f"Integration Test Response (File Content):\n---\n{content}\n---")
         else: print(f"Integration Test Warning: Output file '{output_file_abs}' not found or empty.")
     expected_output_path_abs = output_file_abs.resolve()
-    assert result_msg == f"Mime files successfully processed. Results written to: {expected_output_path_abs}"
+    assert result_msg == f"Inputs successfully processed. Results written to: {expected_output_path_abs}"
     assert output_file_abs.exists(); assert isinstance(content, str); assert len(content) > 5
     content_lower = content.lower()
     assert EXPECTED_TEXT_IMG1.lower() in content_lower or EXPECTED_TEXT_IMG1_ALT.lower() in content_lower, \
@@ -328,4 +328,4 @@ def test_integration_non_existent_file():
     files = ["this_file_absolutely_does_not_exist_anywhere.kjsdfh"]
     print(f"\nRunning integration test: Attempting to read non-existent file.")
     with pytest.raises(FileNotFoundError):
-        reader.read(question=question, files=files)
+        reader.read(question=question, inputs=files)

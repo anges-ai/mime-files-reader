@@ -44,7 +44,7 @@ def main():
 
         result = reader.read(
             question=args.question,
-            files=args.files,
+            inputs=args.files,
             output=args.output,
             auto_cleanup=not args.no_cleanup
         )
