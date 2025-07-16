@@ -1,8 +1,10 @@
 # mime_files_reader/reader.py
 
 import logging
+import re
 from pathlib import Path
 from typing import List, Optional
+from urllib.parse import urlparse
 
 # Ensure google.genai is imported correctly
 try:
@@ -83,9 +85,118 @@ class MimeFilesReader:
             raise FileNotFoundError(e)
         except Exception as e:
             logger.error(f"Unexpected error resolving path '{file_path}': {e}")
-            raise
 
         return resolved_path
+
+    def _is_youtube_url(self, input_str: str) -> bool:
+        """
+        Check if the input string is a YouTube URL.
+        
+        Supports various YouTube URL formats:
+        - https://www.youtube.com/watch?v=VIDEO_ID
+        - https://youtu.be/VIDEO_ID
+        - https://www.youtube.com/embed/VIDEO_ID
+        
+        Args:
+            input_str: The string to check
+            
+        Returns:
+            bool: True if the string is a YouTube URL, False otherwise
+        """
+        if not input_str or not input_str.strip():
+            return False
+            
+        youtube_patterns = [
+            r'https?://(www\.)?youtube\.com/watch\?.*v=',
+            r'https?://youtu\.be/',
+            r'https?://(www\.)?youtube\.com/embed/'
+        ]
+        
+        for pattern in youtube_patterns:
+            if re.search(pattern, input_str, re.IGNORECASE):
+                return True
+        return False
+    
+    def _process_youtube_url(self, url: str) -> types.Part:
+        """
+        Process YouTube URL directly with Gemini.
+        
+        Args:
+            url: The YouTube URL to process
+            
+        Returns:
+            A types.Part object for the YouTube video
+            
+        Raises:
+            ValueError: If the URL is malformed or invalid
+            Exception: For other processing errors
+        """
+        logger.info(f"Processing YouTube URL: {url}")
+        
+        # Validate URL format
+        try:
+            parsed_url = urlparse(url)
+            if not parsed_url.scheme or not parsed_url.netloc:
+                error_msg = f"Invalid URL format: missing scheme or domain in '{url}'"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+                
+            if parsed_url.scheme not in ['http', 'https']:
+                error_msg = f"Invalid URL scheme '{parsed_url.scheme}': only HTTP and HTTPS are supported"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+                
+        except Exception as e:
+            if isinstance(e, ValueError):
+                raise  # Re-raise ValueError as-is
+            error_msg = f"Failed to parse URL '{url}': {e}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        
+        # Additional YouTube-specific URL validation
+        if not self._is_youtube_url(url):
+            error_msg = f"URL does not appear to be a valid YouTube URL: '{url}'"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+        # Process the YouTube URL
+        try:
+            logger.debug(f"Creating types.Part for YouTube URL: {url}")
+            part = types.Part.from_uri(file_uri=url, mime_type="video/mp4")
+            logger.info(f"Successfully processed YouTube URL: {url}")
+            return part
+            
+        except Exception as e:
+            error_msg = f"Failed to create types.Part for YouTube URL '{url}': {e}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+    
+    def _process_input(self, input_item: str) -> types.Part:
+        """
+        Process either local file or YouTube URL.
+        
+        Args:
+            input_item: Either a local file path or YouTube URL
+            
+        Returns:
+            A types.Part object for the input
+        """
+        if self._is_youtube_url(input_item):
+            return self._process_youtube_url(input_item)
+        else:
+            # Process as local file
+            file_path = self._resolve_path(input_item)
+            uploaded_file = self._upload_file(file_path)
+            
+            if not uploaded_file:
+                raise ValueError(f"Failed to upload file: {input_item}")
+                
+            if not (uploaded_file.mime_type and uploaded_file.uri):
+                raise ValueError(f"Uploaded file missing required attributes: {input_item}")
+                
+            return types.Part.from_uri(
+                mime_type=uploaded_file.mime_type,
+                file_uri=uploaded_file.uri
+            )
 
     def _upload_file(self, file_path: Path) -> Optional[types.File]:
         """
@@ -138,10 +249,12 @@ class MimeFilesReader:
     def read(self, question: str, files: List[str], output: Optional[str] = None, auto_cleanup: bool = True) -> str:
         """
         Uploads files, asks a question to the GenAI model, and gets the response.
+        Supports both local files and YouTube URLs.
 
         Args:
             question: The question to ask the model about the files.
-            files: A list of file paths (relative or absolute) to process.
+            files: A list of file paths (relative or absolute) or YouTube URLs to process.
+                  Supported YouTube URL formats: youtube.com/watch, youtu.be, youtube.com/embed
             output: Optional path to save the response text. If None, the response
                     is returned directly. Relative paths are resolved against the
                     working directory.
@@ -183,33 +296,41 @@ class MimeFilesReader:
                 raise IOError(f"Invalid output path '{output}': {e}")
 
         try:
-            # 1. Resolve paths and upload files
-            for file_path_str in files:
-                file_path: Optional[Path] = None
+            # 1. Process files (local files or YouTube URLs)
+            for input_str in files:
                 try:
-                    file_path = self._resolve_path(file_path_str)
-                    uploaded_file = self._upload_file(file_path)
-
-                    if uploaded_file:
-                        uploaded_file_objects.append(uploaded_file)
-                        if uploaded_file.mime_type and uploaded_file.uri:
-                            file_parts.append(types.Part.from_uri(
-                                mime_type=uploaded_file.mime_type,
-                                file_uri=uploaded_file.uri
-                            ))
-                            prepared_files_count += 1
-                        else:
-                            logger.error(f"Skipping file '{file_path.name}' ({uploaded_file.name}) due to missing URI or MIME type after upload.")
+                    if self._is_youtube_url(input_str):
+                        file_part = self._process_youtube_url(input_str)
+                        file_parts.append(file_part)
+                        prepared_files_count += 1
                     else:
-                        logger.warning(f"Skipping file '{file_path.name}' due to upload failure.")
-
+                        # Process as local file
+                        file_path = self._resolve_path(input_str)
+                        uploaded_file = self._upload_file(file_path)
+                        
+                        if not uploaded_file:
+                            continue  # Skip this file but don't fail immediately
+                            
+                        if not (uploaded_file.mime_type and uploaded_file.uri):
+                            logger.warning(f"Uploaded file missing required attributes: {input_str}")
+                            if uploaded_file.name:  # Still track for cleanup
+                                uploaded_file_objects.append(uploaded_file)
+                            continue  # Skip this file but don't fail immediately
+                            
+                        file_part = types.Part.from_uri(
+                            mime_type=uploaded_file.mime_type,
+                            file_uri=uploaded_file.uri
+                        )
+                        file_parts.append(file_part)
+                        uploaded_file_objects.append(uploaded_file)
+                        prepared_files_count += 1
+                            
                 except FileNotFoundError as e:
-                     logger.error(f"Input file error for '{file_path_str}': {e}")
+                     logger.error(f"Input file error for '{input_str}': {e}")
                      raise
                 except Exception as e:
-                    logger.exception(f"Unexpected error processing file '{file_path_str}': {e}")
+                    logger.exception(f"Unexpected error processing input '{input_str}': {e}")
                     raise
-
 
             if not file_parts:
                 if files:
@@ -221,10 +342,8 @@ class MimeFilesReader:
 
             logger.info(f"Successfully prepared {prepared_files_count} file(s) for the model.")
 
-            # --- FIX IS HERE ---
             # 2. Construct content for API call using text= keyword argument
             prompt_parts = file_parts + [types.Part.from_text(text=question)]
-            # --- END FIX ---
             contents = [types.Content(role="user", parts=prompt_parts)]
             generation_config = types.GenerateContentConfig(response_mime_type="text/plain")
 

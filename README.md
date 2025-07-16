@@ -1,30 +1,31 @@
 # MimeFilesReader
 
-Reads and processes various MIME type files (images, PDFs, audio, etc.) using Google's Gemini models capable of multi-modal understanding. Provides both a command-line interface (CLI) and a Model Context Protocol (MCP) server interface.
+Reads and processes various MIME type files (images, PDFs, audio, etc.) and YouTube videos using Google's Gemini models capable of multi-modal understanding. Provides both a command-line interface (CLI) and a Model Context Protocol (MCP) server interface.
 
 ## Features
 
-*   Leverages Google's Generative AI (Gemini) for understanding content within various file types.
+*   Leverages Google's Generative AI (Gemini) for understanding content within various file types and YouTube videos.
 *   Supports common MIME types like images (PNG, JPEG), PDFs, audio (MP3, WAV - depending on model support), etc.
-*   Provides a simple CLI for quick queries about local files.
+*   **NEW: YouTube URL Support** - Analyze YouTube videos directly by providing YouTube URLs (youtube.com/watch, youtu.be, youtube.com/embed formats).
+*   Provides a simple CLI for quick queries about local files and YouTube videos.
 *   Offers an MCP server interface for integration with AI Agent frameworks (LangChain, LlamaIndex, AutoGen, custom agents).
 *   Handles file uploads to the Google AI backend and optional automatic cleanup.
+*   Seamlessly mix local files and YouTube URLs in the same query for comprehensive analysis.
 
 ## Example use cases
 
-### Use case 1
+### Use case 1: PDF and Document Analysis
 With Gemini's OCR capability, agents can use the tool to fetch info from MIME contents such as PDF, images and audio etc.
 
 ![demo1](docs/contents/demo_1.gif)
 
-```
+```bash
 # Try with
 mime-reader \
   -m "gemini-2.5-pro-exp-03-25" \
-  -q "Get the full text out of the PDF paper"\ 
+  -q "Get the full text out of the PDF paper" \
   -f tests/test_data/1916_The_Foundation_of_the_General_Theory_of_Relativity_Einstein_part1.pdf
 ```
-
 ### Use case 2
 Reading images can be helpful to let agents work with headless browsers, for debugging front end code or for web browsing.
 
@@ -36,6 +37,42 @@ mime-reader \
   -m "gemini-2.5-pro-exp-03-25" \
   -q "The picture is a screenshot of headless browser result. Describe in details of what is on it. Highlight any broken part or incorrect content" \
   -f tests/test_data/test_screenshot.png
+
+### Use case 3: YouTube Video Analysis
+Analyze YouTube videos directly by providing YouTube URLs. Supports multiple URL formats including youtube.com/watch, youtu.be, and youtube.com/embed.
+
+```bash
+# Analyze a single YouTube video
+mime-reader \
+  -m "gemini-2.5-pro-exp-03-25" \
+  -q "Summarize the main points covered in this educational video" \
+  -f "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+# Using youtu.be short format
+mime-reader \
+  -m "gemini-2.5-pro-exp-03-25" \
+  -q "What programming concepts are explained in this tutorial?" \
+  -f "https://youtu.be/dQw4w9WgXcQ"
+```
+
+### Use case 4: Mixed Analysis (Local Files + YouTube URLs)
+Seamlessly combine local files and YouTube URLs in the same analysis for comprehensive insights.
+
+```bash
+# Compare a PDF document with a YouTube video on the same topic
+mime-reader \
+  -m "gemini-2.5-pro-exp-03-25" \
+  -q "Compare the information in this PDF with the content of the YouTube video. What are the similarities and differences?" \
+  -f "research_paper.pdf" \
+  -f "https://www.youtube.com/watch?v=educational_video_id"
+
+# Analyze multiple YouTube videos together
+mime-reader \
+  -m "gemini-2.5-pro-exp-03-25" \
+  -q "What are the common themes across these educational videos?" \
+  -f "https://www.youtube.com/watch?v=video1" \
+  -f "https://youtu.be/video2" \
+  -f "https://www.youtube.com/embed/video3"
 ```
 
 ## Installation
@@ -69,8 +106,9 @@ mime-reader \
 
 ## Command-Line Interface (CLI) Usage
 
-The original CLI provides a direct way to ask questions about local files.
+The CLI provides a direct way to ask questions about local files and YouTube videos.
 
+### Local File Examples
 ```bash
 mime-reader -q "Describe the main subject of this image." -f /path/to/your/image.jpg
 ```
@@ -79,13 +117,32 @@ mime-reader -q "Describe the main subject of this image." -f /path/to/your/image
 mime-reader --question "Summarize the first page of this document." --files /path/to/document.pdf --output summary.txt
 ```
 
+### YouTube Video Examples
+```bash
+# Analyze a YouTube video using youtube.com/watch format
+mime-reader -q "What are the key points discussed in this video?" -f "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+```
+
+```bash
+# Analyze a YouTube video using youtu.be format
+mime-reader -q "Summarize this educational content." -f "https://youtu.be/dQw4w9WgXcQ" --output video_summary.txt
+```
+
+### Mixed Analysis Examples
+```bash
+# Combine local files and YouTube URLs in one analysis
+mime-reader -q "Compare the content in this PDF with the YouTube video explanation." \
+  -f "research_paper.pdf" \
+  -f "https://www.youtube.com/watch?v=educational_video_id"
+```
+
 **Options:**
 
 *   `-q`, `--question`: (Required) The question to ask the AI model.
-*   `-f`, `--files`: (Required) One or more file paths. Use the option multiple times for multiple files (`-f file1.pdf -f image.png`).
+*   `-f`, `--files`: (Required) One or more file paths or YouTube URLs. Use the option multiple times for multiple inputs (`-f file1.pdf -f image.png -f "https://youtu.be/video_id"`).
 *   `-o`, `--output`: (Optional) Path to save the text response to a file.
 *   `--model`: (Optional) Specify the Google AI model name (overrides `GEMINI_MODEL_NAME` env var).
-*   `--no-cleanup`: (Optional) Prevent automatic deletion of files uploaded to Google AI backend.
+*   `--no-cleanup`: (Optional) Prevent automatic deletion of files uploaded to Google AI backend (YouTube URLs don't require cleanup).
 
 *(Note: Ensure your original `mime_files_reader/cli.py` and the corresponding entry point in `setup.py` are correctly configured for this.)*
 
@@ -117,10 +174,10 @@ By default, the server listens for MCP messages over **standard input/output (st
 The server exposes a single tool:
 
 *   **Name:** `read_files`
-*   **Description:** Processes a list of local file paths with a question using a Generative AI model (like Gemini) capable of understanding various MIME types (images, PDFs, audio, etc.). Returns the generated text response.
+*   **Description:** Processes a list of local file paths and YouTube URLs with a question using a Generative AI model (like Gemini) capable of understanding various MIME types (images, PDFs, audio, etc.) and YouTube video content. Returns the generated text response.
 *   **Arguments:**
     *   `question` (string, required): The question to ask the AI model about the provided files.
-    *   `files` (list of strings, required): A list of file paths. **Crucially, these paths must be accessible from the environment where the `mime-reader-mcp-server` process is running.**
+    *   `files` (list of strings, required): A list of file paths or YouTube URLs. **File paths must be accessible from the environment where the `mime-reader-mcp-server` process is running.** YouTube URLs support formats: youtube.com/watch, youtu.be, and youtube.com/embed.
     *   `output` (string, optional): A local path (relative to the server's working directory, or absolute) where the AI's response should be saved. If provided, the tool returns a confirmation message instead of the full response.
     *   `auto_cleanup` (boolean, optional, default: `true`): Whether to automatically delete files uploaded to the Google AI service backend after processing.
 
@@ -160,6 +217,7 @@ async def run_mcp_client():
     )
 
     image_path = "/path/to/your/local/image.png" # Replace with a real path accessible by server
+    youtube_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ" # Example YouTube URL
 
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
@@ -170,7 +228,7 @@ async def run_mcp_client():
             list_resp = await session.list_tools()
             print(f"Available Tools: {list_resp.tools}")
 
-            # Call the read_files tool
+            # Example 1: Call the read_files tool with local file
             tool_args = {
                 "question": "What objects are prominent in this image?",
                 "files": [image_path]
@@ -186,6 +244,34 @@ async def run_mcp_client():
             elif getattr(call_resp, 'isError', False):
                  print(f"\nServer returned an error flag.")
             else:
+
+            # Example 2: Call the read_files tool with YouTube URL
+            youtube_args = {
+                "question": "What is the main topic of this video?",
+                "files": [youtube_url]
+            }
+            print(f"\nCalling 'read_files' with YouTube URL: {youtube_args}")
+            youtube_resp: mcp_types.CallToolResponse = await session.call_tool("read_files", youtube_args)
+            
+            if hasattr(youtube_resp, 'content') and youtube_resp.content:
+                if isinstance(youtube_resp.content[0], mcp_types.TextContent):
+                    print(f"\nYouTube Analysis Response:\n{youtube_resp.content[0].text}")
+                else:
+                    print(f"\nReceived non-text content: {youtube_resp.content[0]}")
+            
+            # Example 3: Mixed analysis with both local file and YouTube URL
+            mixed_args = {
+                "question": "Compare the content in this image with the YouTube video content.",
+                "files": [image_path, youtube_url]
+            }
+            print(f"\nCalling 'read_files' with mixed inputs: {mixed_args}")
+            mixed_resp: mcp_types.CallToolResponse = await session.call_tool("read_files", mixed_args)
+            
+            if hasattr(mixed_resp, 'content') and mixed_resp.content:
+                if isinstance(mixed_resp.content[0], mcp_types.TextContent):
+                    print(f"\nMixed Analysis Response:\n{mixed_resp.content[0].text}")
+                else:
+                    print(f"\nReceived non-text content: {mixed_resp.content[0]}")
                  print(f"\nReceived unexpected response structure: {call_resp}")
 
 if __name__ == "__main__":
@@ -213,6 +299,10 @@ AI agent frameworks (like LangChain, LlamaIndex, AutoGen, CrewAI, or custom impl
 
 4.  **Modularity and Reusability:** The `mime-reader-mcp-server` can be run as a standalone service. Multiple different agents or applications can then connect to it via MCP to leverage its file-reading capabilities without each needing to implement the Google AI interaction logic themselves.
 
+
+5.  **YouTube Video Analysis:** Agents can analyze YouTube videos directly by providing URLs instead of requiring local video downloads. For example, an agent could process "Summarize the key points from this educational video at https://www.youtube.com/watch?v=abc123" or "What programming concepts are explained in https://youtu.be/def456?" This enables agents to incorporate video content analysis into their workflows seamlessly.
+
+6.  **Cross-Media Content Analysis:** Agents can compare and analyze information across different media types in a single tool call, such as "Compare the research findings in this PDF report with the explanations in this YouTube lecture" by providing both local PDF paths and YouTube URLs to the same `read_files` call.
 By providing this functionality via MCP, `MimeFilesReader` becomes a powerful, reusable component in the growing ecosystem of AI agents and tools.
 
 ## Contributing

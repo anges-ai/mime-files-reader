@@ -16,7 +16,7 @@ with open(os.path.join(this_directory, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name="mime-files-reader",
-    version="0.1.0", # Match version in __init__.py
+    version="0.2.0", # Match version in __init__.py
     author="Anges",
     author_email="me@anges.ai", # Replace with your email
     description="A tool to process various file types (images, PDFs, audio) using Google Generative AI",

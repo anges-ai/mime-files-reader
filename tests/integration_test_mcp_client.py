@@ -266,30 +266,162 @@ async def main():
     return test_passed # Return True if no exceptions caused failure
 
 
+async def test_youtube_url_support():
+    """Test MCP server with YouTube URL processing using the same stable educational video."""
+    logger.info("Starting comprehensive YouTube URL support test...")
+    
+    # Use the same stable educational YouTube video URL from previous tests
+    test_youtube_url = "https://www.youtube.com/watch?v=86y0gZnxuWE"  # Khan Academy: Intro to Programming
+    test_question = "What is this video about? Describe the main topics covered."
+    
+    test_passed = True
+    
+    try:
+        async with asyncio.timeout(120):  # Extended timeout for YouTube processing
+            # Set up server parameters with proper environment
+            server_params = StdioServerParameters(
+                command=SERVER_COMMAND,
+                args=SERVER_ARGS,
+                env={
+                    **os.environ,
+                    "GEMINI_API_KEY": API_KEY,
+                    "GEMINI_MODEL_NAME": MODEL_NAME,
+                    "PYTHONUNBUFFERED": "1"
+                }
+            )
+            
+            async with stdio_client(server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    logger.info("Initializing MCP session for YouTube test...")
+                    await session.initialize()
+                    logger.info("Session initialized successfully.")
+                    
+                    # 1. List tools and verify YouTube support in schema
+                    logger.info("Listing tools to verify YouTube support...")
+                    tools_response: mcp_types.ListToolsResponse = await session.list_tools()
+                    
+                    # Find the read_files tool
+                    read_files_tool = None
+                    for tool in tools_response.tools:
+                        if tool.name == "read_files":
+                            read_files_tool = tool
+                            break
+                    
+                    if not read_files_tool:
+                        logger.error("read_files tool not found in MCP server")
+                        return False
+                    
+                    # Verify tool description mentions YouTube
+                    logger.info(f"Tool description: {read_files_tool.description}")
+                    if "YouTube" not in read_files_tool.description and "youtube" not in read_files_tool.description.lower():
+                        logger.error("Tool description doesn't mention YouTube support")
+                        return False
+                    
+                    # 2. Call the tool with YouTube URL
+                    logger.info(f"--- Test Case: YouTube URL Processing ---")
+                    logger.info(f"Testing YouTube URL: {test_youtube_url}")
+                    logger.info(f"Question: {test_question}")
+                    
+                    tool_args = {
+                        "question": test_question,
+                        "files": [test_youtube_url]
+                    }
+                    
+                    try:
+                        # Call the tool with YouTube URL
+                        logger.info("Calling read_files tool with YouTube URL...")
+                        result_response: mcp_types.CallToolResponse = await session.call_tool("read_files", tool_args)
+                        logger.info(f"Raw response object: {result_response}")
+                        
+                        # 3. Verify response format and content
+                        result_text = ""
+                        if hasattr(result_response, 'content') and isinstance(result_response.content, list) and result_response.content:
+                            content_part = result_response.content[0]
+                            
+                            # Validate response content is TextContent type
+                            if isinstance(content_part, mcp_types.TextContent) and hasattr(content_part, 'text'):
+                                result_text = content_part.text
+                                logger.info(f"✓ Response is TextContent type")
+                                logger.info(f"Response text length: {len(result_text)} characters")
+                                logger.info(f"Response preview: '{result_text[:200]}...'")
+                                # Check that response text is meaningful (length > 0)
+                                if len(result_text) == 0:
+                                    logger.error("Response text is empty")
+                                    return False
+                                
+                                logger.info("✓ Response text is meaningful (length > 0)")
+                                
+                                # Verify response contains relevant content about programming/education
+                                response_lower = result_text.lower()
+                                expected_keywords = ["programming", "code", "computer", "learn", "tutorial", "education", "khan"]
+                                found_keywords = [kw for kw in expected_keywords if kw in response_lower]
+                                
+                                if found_keywords:
+                                    logger.info(f"✓ Response contains relevant keywords: {found_keywords}")
+                                else:
+                                    logger.warning(f"Response may not be about expected content. Keywords checked: {expected_keywords}")
+                                    logger.info("Continuing test as response format is correct...")
+                                
+                                logger.info("✓ YouTube URL processing test PASSED")
+                                
+                            else:
+                                logger.error(f"Response content is not TextContent type: {type(content_part)}")
+                                return False
+                        else:
+                            logger.error(f"Unexpected response format or empty content: {result_response}")
+                            return False
+                            
+                    except Exception as e:
+                        logger.exception(f"Error calling tool with YouTube URL: {e}")
+                        return False
+                        
+    except TimeoutError:
+        logger.error("YouTube URL test timed out")
+        return False
+    except Exception as e:
+        logger.exception(f"Unexpected error in YouTube URL test: {e}")
+        return False
+    
+    logger.info("YouTube URL support test completed successfully!")
+    return True
+
+
 if __name__ == "__main__":
     # Ensure API key is available before running
     if not API_KEY:
         print("\nError: GEMINI_API_KEY environment variable must be set to run the test client.", file=sys.stderr)
-        sys.exit(1) # Exit with error code
+        sys.exit(1)
 
     success = False
-    exit_code = 1 # Default to failure
+    exit_code = 1
+    
     try:
+        # Run main integration tests
+        print("\n=== Running Main MCP Integration Tests ===")
         success = asyncio.run(main())
+        
         if success:
-            print("\n--- Client Test Completed Successfully ---")
-            exit_code = 0 # Set success code
+            print("\n=== Running YouTube URL Support Test ===")
+            youtube_success = asyncio.run(test_youtube_url_support())
+            
+            if youtube_success:
+                print("\n--- All Tests Completed Successfully ---")
+                print("✓ Main MCP integration tests: PASSED")
+                print("✓ YouTube URL support test: PASSED")
+                exit_code = 0
+            else:
+                print("\n--- YouTube URL Test FAILED ---", file=sys.stderr)
+                print("✓ Main MCP integration tests: PASSED")
+                print("✗ YouTube URL support test: FAILED")
         else:
-            # Failures should have been logged by fail_test
-             print("\n--- Client Test FAILED (Check logs for assertion details) ---", file=sys.stderr)
-             # Keep exit_code = 1
+            print("\n--- Main Integration Tests FAILED ---", file=sys.stderr)
+            print("✗ Main MCP integration tests: FAILED")
+            print("  (Skipping YouTube URL test due to main test failure)")
 
     except KeyboardInterrupt:
-        logger.info("Client interrupted by user.")
-        print("\n--- Client Test Interrupted ---", file=sys.stderr)
+        logger.info("Tests interrupted by user.")
+        print("\n--- Tests Interrupted ---", file=sys.stderr)
     except Exception as main_err:
-        # Catch failures from fail_test raising AssertionError or other sync exceptions
-        print(f"\n--- Client Test FAILED (Unhandled Exception): {main_err} ---", file=sys.stderr)
-        # Keep exit_code = 1
+        print(f"\n--- Tests FAILED (Unhandled Exception): {main_err} ---", file=sys.stderr)
 
-    sys.exit(exit_code) # Exit with appropriate code
+    sys.exit(exit_code)

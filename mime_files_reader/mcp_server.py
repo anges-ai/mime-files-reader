@@ -33,8 +33,7 @@ if not API_KEY:
 # --- Tool Definition ---
 TOOL_NAME = "read_files"
 TOOL_DESCRIPTION = (
-    "Processes a list of local file paths with a question using a Generative AI model "
-    "(like Gemini) capable of understanding various MIME types (images, PDFs, audio, etc.). "
+    "Process local files (images, PDFs, audio, video) or YouTube videos with a question using Google's Gemini AI model. "
     "Returns the generated text response."
 )
 TOOL_INPUT_SCHEMA = {
@@ -49,8 +48,8 @@ TOOL_INPUT_SCHEMA = {
             "type": "array",
             "items": {"type": "string"},
             "description": (
-                "A list of strings, where each string is a path to a local file "
-                "accessible by the server running this tool."
+                "A list of strings, where each string is either a path to a local file "
+                "or a YouTube video URL"
             ),
         },
         "output": {
@@ -60,12 +59,12 @@ TOOL_INPUT_SCHEMA = {
                 "If provided, the tool returns a confirmation message instead of the full response."
             ),
         },
-         "auto_cleanup": {
+        "auto_cleanup": {
             "type": "boolean",
             "default": True,
             "description": (
-                "Optional (defaults to True). Whether to automatically delete files "
-                "uploaded to the AI service backend after processing."
+                "Whether to automatically clean up uploaded files (default: True). "
+                "Note: YouTube URLs don't require cleanup."
             ),
         }
     },

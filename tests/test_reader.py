@@ -28,6 +28,29 @@ TEST_IMAGE2_FILENAME = "test_image_2.png"
 TEST_IMAGE1 = TEST_DATA_DIR / TEST_IMAGE1_FILENAME
 TEST_IMAGE2 = TEST_DATA_DIR / TEST_IMAGE2_FILENAME
 
+# YouTube URL test constants
+YOUTUBE_URLS_VALID = [
+    "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "http://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "https://youtube.com/watch?v=dQw4w9WgXcQ",
+    "https://youtu.be/dQw4w9WgXcQ",
+    "http://youtu.be/dQw4w9WgXcQ",
+    "https://www.youtube.com/embed/dQw4w9WgXcQ",
+    "http://www.youtube.com/embed/dQw4w9WgXcQ",
+    "https://youtube.com/embed/dQw4w9WgXcQ"
+]
+
+YOUTUBE_URLS_INVALID = [
+    "https://vimeo.com/123456789",
+    "https://example.com/video",
+    "https://www.google.com",
+    "not_a_url",
+    "/local/file/path.mp4",
+    "https://youtube.com/something_else",
+    "https://youtu.be",
+    "https://www.youtube.com"
+]
+
 EXPECTED_TEXT_IMG1 = "MCP server"
 EXPECTED_TEXT_IMG1_ALT = "building from scratch"
 EXPECTED_TEXT_IMG2 = "what will you build"
@@ -49,6 +72,138 @@ def _ensure_test_file(file_path: Path):
 
 _ensure_test_file(TEST_IMAGE1)
 _ensure_test_file(TEST_IMAGE2)
+
+# --- YouTube URL Detection Tests ---
+class TestYouTubeURLDetection:
+    """Test YouTube URL detection functionality."""
+    
+    def test_is_youtube_url_valid_urls(self):
+        """Test that valid YouTube URLs are correctly identified."""
+        reader = MimeFilesReader(TEST_MODEL, MOCK_API_KEY, str(TEST_WORKING_DIR))
+        
+        for url in YOUTUBE_URLS_VALID:
+            assert reader._is_youtube_url(url), f"Failed to detect valid YouTube URL: {url}"
+    
+    def test_is_youtube_url_invalid_urls(self):
+        """Test that invalid URLs are correctly rejected."""
+        reader = MimeFilesReader(TEST_MODEL, MOCK_API_KEY, str(TEST_WORKING_DIR))
+        
+        for url in YOUTUBE_URLS_INVALID:
+            assert not reader._is_youtube_url(url), f"Incorrectly detected non-YouTube URL as valid: {url}"
+    
+    def test_is_youtube_url_edge_cases(self):
+        """Test edge cases for YouTube URL detection."""
+        reader = MimeFilesReader(TEST_MODEL, MOCK_API_KEY, str(TEST_WORKING_DIR))
+        
+        # Test empty string and None-like cases
+        assert not reader._is_youtube_url(""), "Empty string should not be detected as YouTube URL"
+        assert not reader._is_youtube_url("   "), "Whitespace string should not be detected as YouTube URL"
+        
+        # Test case sensitivity
+        assert reader._is_youtube_url("https://YOUTUBE.com/watch?v=dQw4w9WgXcQ"), "Should handle uppercase domain"
+        assert reader._is_youtube_url("https://WWW.YOUTUBE.COM/watch?v=dQw4w9WgXcQ"), "Should handle uppercase domain with www"
+
+
+# --- YouTube Support Tests (Step 5) ---
+class TestYouTubeSupport:
+    """Comprehensive tests for YouTube URL support functionality."""
+    
+    def test_is_youtube_url_valid_formats(self):
+        """Test YouTube URL detection for various formats."""
+        reader = MimeFilesReader(TEST_MODEL, MOCK_API_KEY, str(TEST_WORKING_DIR))
+        
+        # Test all valid YouTube URL formats
+        valid_formats = [
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "http://www.youtube.com/watch?v=dQw4w9WgXcQ", 
+            "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://youtu.be/dQw4w9WgXcQ",
+            "http://youtu.be/dQw4w9WgXcQ",
+            "https://www.youtube.com/embed/dQw4w9WgXcQ",
+            "http://www.youtube.com/embed/dQw4w9WgXcQ",
+            "https://youtube.com/embed/dQw4w9WgXcQ",
+            # Case sensitivity tests
+            "https://YOUTUBE.com/watch?v=dQw4w9WgXcQ",
+            "https://WWW.YOUTUBE.COM/watch?v=dQw4w9WgXcQ",
+            "https://YOUTU.BE/dQw4w9WgXcQ"
+        ]
+        
+        for url in valid_formats:
+            assert reader._is_youtube_url(url), f"Failed to detect valid YouTube URL: {url}"
+    
+    def test_is_youtube_url_invalid_formats(self):
+        """Test that non-YouTube URLs are not detected as YouTube."""
+        reader = MimeFilesReader(TEST_MODEL, MOCK_API_KEY, str(TEST_WORKING_DIR))
+        
+        # Test invalid URLs that should not be detected as YouTube
+        invalid_formats = [
+            "https://vimeo.com/123456789",
+            "https://example.com/video", 
+            "https://www.google.com",
+            "not_a_url",
+            "/local/file/path.mp4",
+            "https://youtube.com/something_else",
+            "https://youtu.be",  # Missing video ID
+            "https://www.youtube.com",  # No watch path
+            "https://youtube.fake.com/watch?v=123",  # Fake domain
+            "https://notyoutube.com/watch?v=123",
+            "file:///local/path/video.mp4",
+            "ftp://example.com/video.mp4",
+            "",  # Empty string
+            "   ",  # Whitespace only
+            "https://www.youtube.com/user/someuser",  # User page, not video
+            "https://www.youtube.com/channel/somechannel"  # Channel page, not video
+        ]
+        
+        for url in invalid_formats:
+            assert not reader._is_youtube_url(url), f"Incorrectly detected non-YouTube URL as valid: {url}"
+    
+    @pytest.mark.integration
+    @pytest.mark.skipif(not REAL_API_KEY, reason="GEMINI_API_KEY environment variable not set")
+    def test_read_youtube_url_integration(self):
+        """Integration test with real YouTube URL."""
+        reader = MimeFilesReader(
+            model_name=TEST_MODEL,
+            google_genai_key=REAL_API_KEY,
+            working_dir="."
+        )
+        
+        # Use a stable, educational YouTube video (Khan Academy - Introduction to Programming)
+        # This is a short, stable educational video that's unlikely to be removed
+        youtube_url = "https://www.youtube.com/watch?v=FCMxA3m_Imc"
+        question = "What is this video about? Provide a brief summary of the main topic."
+        
+        print(f"\nRunning YouTube integration test with URL: {youtube_url}")
+        start_time = time.time()
+        result = None
+        
+        try:
+            result = reader.read(
+                question=question, 
+                files=[youtube_url], 
+                output=None, 
+                auto_cleanup=True
+            )
+        except Exception as e:
+            pytest.fail(f"YouTube integration test failed with exception: {e}")
+        finally:
+            duration = time.time() - start_time
+            print(f"YouTube integration test took {duration:.2f} seconds.")
+            if result:
+                print(f"YouTube Integration Test Response:\n---\n{result}\n---")
+            else:
+                print("YouTube Integration Test Warning: No result received.")
+        
+        # Verify response format and content
+        assert isinstance(result, str), "Response should be a string"
+        assert len(result) > 20, "Response should contain meaningful content"
+        
+        # Basic content validation - should mention programming or coding concepts
+        result_lower = result.lower()
+        programming_keywords = ["programming", "code", "coding", "computer", "software", "algorithm"]
+        has_programming_content = any(keyword in result_lower for keyword in programming_keywords)
+        
+        assert has_programming_content, f"Response should contain programming-related content. Got: {result[:200]}..."
 
 
 # --- Fixtures ---
