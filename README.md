@@ -22,7 +22,7 @@ With Gemini's OCR capability, agents can use the tool to fetch info from MIME co
 ```bash
 # Try with
 mime-reader \
-  -m "gemini-2.5-pro-exp-03-25" \
+  -m "gemini-2.5-pro" \
   -q "Get the full text out of the PDF paper" \
   -f tests/test_data/1916_The_Foundation_of_the_General_Theory_of_Relativity_Einstein_part1.pdf
 ```
@@ -34,7 +34,7 @@ Reading images can be helpful to let agents work with headless browsers, for deb
 ```
 # Try with
 mime-reader \
-  -m "gemini-2.5-pro-exp-03-25" \
+  -m "gemini-2.5-pro" \
   -q "The picture is a screenshot of headless browser result. Describe in details of what is on it. Highlight any broken part or incorrect content" \
   -f tests/test_data/test_screenshot.png
 
@@ -44,13 +44,13 @@ Analyze YouTube videos directly by providing YouTube URLs. Supports multiple URL
 ```bash
 # Analyze a single YouTube video
 mime-reader \
-  -m "gemini-2.5-pro-exp-03-25" \
+  -m "gemini-2.5-pro" \
   -q "Summarize the main points covered in this educational video" \
   -f "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
 # Using youtu.be short format
 mime-reader \
-  -m "gemini-2.5-pro-exp-03-25" \
+  -m "gemini-2.5-pro" \
   -q "What programming concepts are explained in this tutorial?" \
   -f "https://youtu.be/dQw4w9WgXcQ"
 ```
@@ -61,14 +61,14 @@ Seamlessly combine local files and YouTube URLs in the same analysis for compreh
 ```bash
 # Compare a PDF document with a YouTube video on the same topic
 mime-reader \
-  -m "gemini-2.5-pro-exp-03-25" \
+  -m "gemini-2.5-pro" \
   -q "Compare the information in this PDF with the content of the YouTube video. What are the similarities and differences?" \
   -f "research_paper.pdf" \
   -f "https://www.youtube.com/watch?v=educational_video_id"
 
 # Analyze multiple YouTube videos together
 mime-reader \
-  -m "gemini-2.5-pro-exp-03-25" \
+  -m "gemini-2.5-pro" \
   -q "What are the common themes across these educational videos?" \
   -f "https://www.youtube.com/watch?v=video1" \
   -f "https://youtu.be/video2" \
@@ -77,23 +77,17 @@ mime-reader \
 
 ## Installation
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/anges-ai/mime-files-reader.git
-    cd mime_reader
-    ```
-2.  **Create and activate a virtual environment (Recommended):**
+1.  **Create and activate a virtual environment (Recommended):**
     ```bash
     python -m venv venv
     source venv/bin/activate  # On Windows use `venv\Scripts\activate`
     ```
-3.  **Install dependencies and the package:**
+2.  **Install dependencies and the package:**
     ```bash
-    pip install -e .
+    pip install mime-files-reader
     ```
-    This installs the package in editable mode along with its dependencies listed in `setup.py` (which should read `requirements.txt`).
 
-4.  **Set Environment Variables:**
+3.  **Set Environment Variables:**
     You need a Google Generative AI API key. Create a `.env` file in the project root or export the variable:
     ```dotenv
     # .env
@@ -102,7 +96,7 @@ mime-reader \
     # GEMINI_MODEL_NAME="gemini-2.0-flash"
     ```
 
-    For complex tasks, consider using `gemini-2.5-pro-exp-03-25`, though the quota is currently low.
+    For complex tasks, consider using `gemini-2.5-pro`, though the quota is currently low.
 
 ## Command-Line Interface (CLI) Usage
 
