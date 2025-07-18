@@ -1,6 +1,7 @@
 # mime_files_reader/reader.py
 
 import logging
+import os
 import re
 from pathlib import Path
 from typing import List, Optional
@@ -29,45 +30,64 @@ class MimeFilesReader:
     to a specified GenAI model, retrieves the streaming text-based response,
     and optionally saves the response to a file. Handles automatic cleanup.
     """
-
-    def __init__(self, model_name: str, google_genai_key: str, working_dir: str = "."):
+    def __init__(self, model_name: str, google_genai_key: Optional[str] = None, 
+                 working_dir: str = ".", project: Optional[str] = None):
         """
         Initializes the MimeFilesReader.
 
         Args:
             model_name: The name of the Google GenAI model to use
                         (e.g., 'gemini-1.5-flash-latest').
-            google_genai_key: Your Google GenAI API key.
+            google_genai_key: Your Google GenAI API key. Optional if using Vertex AI
+                            (when project parameter or VERTEX_GCP_PROJECT environment variable is set).
             working_dir: The base directory for resolving relative file paths.
                          Defaults to the current working directory (".").
+            project: The Google Cloud project ID for Vertex AI. If provided, takes precedence
+                    over VERTEX_GCP_PROJECT environment variable.
+
+        Raises:
+            ValueError: If neither google_genai_key nor project (or VERTEX_GCP_PROJECT env var) is provided.
         """
         self.model_name = model_name
-        self.working_dir = Path(working_dir).resolve() # Ensure working_dir is absolute
-        self.client = self._initialize_client(google_genai_key)
+        self.google_genai_key = google_genai_key
+        self.project = project
+        self.working_dir = Path(working_dir).resolve()  # Ensure working_dir is absolute
+        self.client = self._initialize_client()
         logger.info(
             f"MimeFilesReader initialized with model '{self.model_name}' "
             f"and working directory '{self.working_dir}'"
         )
 
-    def _initialize_client(self, api_key: str) -> genai.Client:
-        """Initializes the GenAI Client."""
-        if not api_key:
-             logger.error("Google GenAI API key is missing or empty.")
-             raise ValueError("Missing Google GenAI API key.")
+    def _initialize_client(self) -> genai.Client:
+        """Initializes the GenAI Client using either Google API key or Vertex AI."""
+        # Priority: passed project parameter > VERTEX_GCP_PROJECT env var > Google API key
+        vertex_project = self.project or os.environ.get('VERTEX_GCP_PROJECT')
+        
+        if vertex_project:
+            logger.info(f"Initializing Vertex AI client with project: {vertex_project}")
+            try:
+                return genai.Client(
+                    vertexai=True,
+                    project=vertex_project,
+                    location="global"
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize Vertex AI client: {e}")
+                raise
+        
+        # Fallback to Google API key authentication
+        if not self.google_genai_key:
+            raise ValueError(
+                "Missing Google GenAI API key. Please provide either 'google_genai_key' parameter "
+                "or set 'project' parameter / 'VERTEX_GCP_PROJECT' environment variable for Vertex AI."
+            )
+        
+        logger.info("Initializing Google GenAI client with API key")
         try:
-            client = genai.Client(api_key=api_key)
-            logger.info("Google GenAI client initialized successfully.")
-            return client
-        except google_exceptions.PermissionDenied:
-            logger.error("Authentication failed. Please check your Google GenAI API key.")
-            raise
-        except google_exceptions.DefaultCredentialsError:
-             logger.error("Could not automatically find Google Cloud credentials. Ensure your environment is set up correctly or provide an API key.")
-             raise
+            return genai.Client(api_key=self.google_genai_key)
         except Exception as e:
             logger.error(f"Failed to initialize Google GenAI client: {e}")
             raise
-
     def _resolve_path(self, file_path: str) -> Path:
         """Resolves a file path relative to the working directory if necessary,
            ensuring it exists and is a file."""

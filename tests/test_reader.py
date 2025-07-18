@@ -484,3 +484,250 @@ def test_integration_non_existent_file():
     print(f"\nRunning integration test: Attempting to read non-existent file.")
     with pytest.raises(FileNotFoundError):
         reader.read(question=question, files=files)
+class TestDualAuthentication:
+    """Test class for testing both Google API key and Vertex AI authentication methods."""
+
+    @patch.dict(os.environ, {}, clear=True)
+    @patch('mime_files_reader.reader.genai.Client')
+    def test_google_api_key_authentication(self, mock_client_class):
+        """Test that Google API key authentication works when VERTEX_GCP_PROJECT is not set."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        
+        # Initialize reader with API key (no VERTEX_GCP_PROJECT env var)
+        reader = MimeFilesReader(
+            model_name="gemini-1.5-flash-latest",
+            google_genai_key="test-api-key"
+        )
+        
+        # Verify Google API key client was created
+        mock_client_class.assert_called_once_with(api_key="test-api-key")
+        assert reader.client == mock_client
+
+    @patch.dict(os.environ, {'VERTEX_GCP_PROJECT': 'test-project-123'}, clear=True)
+    @patch('mime_files_reader.reader.genai.Client')
+    def test_vertex_ai_authentication(self, mock_client_class):
+        """Test that Vertex AI authentication works when VERTEX_GCP_PROJECT is set."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        
+        # Initialize reader with Vertex AI (VERTEX_GCP_PROJECT env var set)
+        reader = MimeFilesReader(
+            model_name="gemini-1.5-flash-latest",
+            google_genai_key=None  # API key not needed for Vertex AI
+        )
+        
+        # Verify Vertex AI client was created
+        mock_client_class.assert_called_once_with(
+            vertexai=True,
+            project="test-project-123",
+            location="global"
+        )
+        assert reader.client == mock_client
+
+    @patch.dict(os.environ, {'VERTEX_GCP_PROJECT': 'test-project-456'}, clear=True)
+    @patch('mime_files_reader.reader.genai.Client')
+    def test_vertex_ai_takes_precedence_over_api_key(self, mock_client_class):
+        """Test that Vertex AI is used even when both VERTEX_GCP_PROJECT and API key are provided."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        
+        # Initialize reader with both Vertex AI env var and API key
+        reader = MimeFilesReader(
+            model_name="gemini-1.5-flash-latest",
+            google_genai_key="test-api-key"  # This should be ignored
+        )
+        
+        # Verify Vertex AI client was created (not API key)
+        mock_client_class.assert_called_once_with(
+            vertexai=True,
+            project="test-project-456",
+            location="global"
+        )
+        assert reader.client == mock_client
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_missing_authentication_raises_error(self):
+        """Test that missing both API key and VERTEX_GCP_PROJECT raises appropriate error."""
+        with pytest.raises(ValueError, match="Missing Google GenAI API key"):
+            MimeFilesReader(
+                model_name="gemini-1.5-flash-latest",
+                google_genai_key=None
+            )
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_empty_api_key_raises_error(self):
+        """Test that empty API key raises appropriate error when VERTEX_GCP_PROJECT is not set."""
+        with pytest.raises(ValueError, match="Missing Google GenAI API key"):
+            MimeFilesReader(
+                model_name="gemini-1.5-flash-latest",
+                google_genai_key=""
+            )
+
+    @patch.dict(os.environ, {'VERTEX_GCP_PROJECT': 'test-project'}, clear=True)
+    @patch('mime_files_reader.reader.genai.Client')
+    def test_vertex_ai_client_initialization_failure(self, mock_client_class):
+        """Test that Vertex AI client initialization failure is properly handled."""
+        mock_client_class.side_effect = Exception("Vertex AI initialization failed")
+        
+        with pytest.raises(Exception, match="Vertex AI initialization failed"):
+            MimeFilesReader(
+                model_name="gemini-1.5-flash-latest",
+                google_genai_key=None
+            )
+
+    @patch('mime_files_reader.reader.genai.Client')
+    def test_api_key_client_initialization_failure(self, mock_client_class):
+        """Test that API key client initialization failure is properly handled."""
+        mock_client_class.side_effect = Exception("API key initialization failed")
+        
+        with pytest.raises(Exception, match="API key initialization failed"):
+            MimeFilesReader(
+                model_name="gemini-1.5-flash-latest",
+                google_genai_key="test-api-key"
+            )
+
+
+class TestProjectParameter:
+    """Test cases for the new project parameter functionality."""
+    
+    @patch('mime_files_reader.reader.genai.Client')
+    def test_project_parameter_takes_precedence_over_env_var(self, mock_client):
+        """Test that project parameter takes precedence over VERTEX_GCP_PROJECT env var."""
+        with patch.dict(os.environ, {'VERTEX_GCP_PROJECT': 'env-project'}):
+            reader = MimeFilesReader(
+                model_name='gemini-1.5-flash-latest',
+                project='param-project'
+            )
+            
+            mock_client.assert_called_once_with(
+                vertexai=True,
+                project='param-project',
+                location='global'
+            )
+            assert reader.project == 'param-project'
+    
+    @patch('mime_files_reader.reader.genai.Client')
+    def test_fallback_to_env_var_when_no_project_param(self, mock_client):
+        """Test fallback to VERTEX_GCP_PROJECT env var when no project parameter."""
+        with patch.dict(os.environ, {'VERTEX_GCP_PROJECT': 'env-project'}):
+            reader = MimeFilesReader(
+                model_name='gemini-1.5-flash-latest'
+            )
+            
+            mock_client.assert_called_once_with(
+                vertexai=True,
+                project='env-project',
+                location='global'
+            )
+            assert reader.project is None
+    
+    @patch('mime_files_reader.reader.genai.Client')
+    def test_fallback_to_api_key_when_no_vertex_config(self, mock_client):
+        """Test fallback to Google API key when no Vertex AI configuration."""
+        # Ensure no VERTEX_GCP_PROJECT env var
+        with patch.dict(os.environ, {}, clear=True):
+            reader = MimeFilesReader(
+                model_name='gemini-1.5-flash-latest',
+                google_genai_key='test-api-key'
+            )
+            
+            mock_client.assert_called_once_with(api_key='test-api-key')
+            assert reader.google_genai_key == 'test-api-key'
+            assert reader.project is None
+    
+    def test_error_when_no_authentication_provided(self):
+        """Test that ValueError is raised when no authentication method is provided."""
+        # Ensure no VERTEX_GCP_PROJECT env var
+        with patch.dict(os.environ, {}, clear=True):
+            with pytest.raises(ValueError, match="Missing Google GenAI API key"):
+                MimeFilesReader(model_name='gemini-1.5-flash-latest')
+    
+    @patch('mime_files_reader.reader.genai.Client')
+    def test_project_parameter_with_api_key_uses_vertex(self, mock_client):
+        """Test that providing project parameter uses Vertex AI even when API key is available."""
+        reader = MimeFilesReader(
+            model_name='gemini-1.5-flash-latest',
+            google_genai_key='test-api-key',
+            project='test-project'
+        )
+        
+        # Should use Vertex AI, not the API key
+        mock_client.assert_called_once_with(
+            vertexai=True,
+            project='test-project',
+            location='global'
+        )
+        assert reader.project == 'test-project'
+        assert reader.google_genai_key == 'test-api-key'
+    
+    @patch('mime_files_reader.reader.genai.Client')
+    def test_backward_compatibility_with_existing_usage(self, mock_client):
+        """Test that existing usage patterns still work (backward compatibility)."""
+        # Test existing pattern: only API key
+        with patch.dict(os.environ, {}, clear=True):
+            reader = MimeFilesReader(
+                model_name='gemini-1.5-flash-latest',
+                google_genai_key='test-api-key',
+                working_dir='/tmp'
+            )
+            
+            mock_client.assert_called_once_with(api_key='test-api-key')
+            assert reader.google_genai_key == 'test-api-key'
+            assert reader.project is None
+            assert str(reader.working_dir) == '/tmp'
+    
+    @patch('mime_files_reader.reader.genai.Client')
+    def test_vertex_ai_initialization_error_handling(self, mock_client):
+        """Test error handling when Vertex AI initialization fails."""
+        mock_client.side_effect = Exception("Vertex AI auth failed")
+        
+        with pytest.raises(Exception, match="Vertex AI auth failed"):
+            MimeFilesReader(
+                model_name='gemini-1.5-flash-latest',
+                project='test-project'
+            )
+    
+    @patch('mime_files_reader.reader.genai.Client')
+    def test_api_key_initialization_error_handling(self, mock_client):
+        """Test error handling when API key initialization fails."""
+        mock_client.side_effect = Exception("API key auth failed")
+        
+        with patch.dict(os.environ, {}, clear=True):
+            with pytest.raises(Exception, match="API key auth failed"):
+                MimeFilesReader(
+                    model_name='gemini-1.5-flash-latest',
+                    google_genai_key='invalid-key'
+                )
+    
+    @patch('mime_files_reader.reader.genai.Client')
+    def test_empty_project_parameter_falls_back_to_env(self, mock_client):
+        """Test that empty string project parameter falls back to environment variable."""
+        with patch.dict(os.environ, {'VERTEX_GCP_PROJECT': 'env-project'}):
+            reader = MimeFilesReader(
+                model_name='gemini-1.5-flash-latest',
+                project=''
+            )
+            
+            mock_client.assert_called_once_with(
+                vertexai=True,
+                project='env-project',
+                location='global'
+            )
+            assert reader.project == ''
+    
+    @patch('mime_files_reader.reader.genai.Client')
+    def test_none_project_parameter_falls_back_to_env(self, mock_client):
+        """Test that None project parameter falls back to environment variable."""
+        with patch.dict(os.environ, {'VERTEX_GCP_PROJECT': 'env-project'}):
+            reader = MimeFilesReader(
+                model_name='gemini-1.5-flash-latest',
+                project=None
+            )
+            
+            mock_client.assert_called_once_with(
+                vertexai=True,
+                project='env-project',
+                location='global'
+            )
+            assert reader.project is None
